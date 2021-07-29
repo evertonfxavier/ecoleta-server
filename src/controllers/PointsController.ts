@@ -2,26 +2,6 @@ import { Request, Response } from "express";
 import knex from "../database/connection";
 
 class PointsController {
-  async show(req: Request, res: Response) {
-    //pegar id do ponto de coleta
-    // const id = req.params.id;
-    const { id } = req.params;
-
-    //o first > retorna apenas 1 unico registro
-    const point = await knex("points").where("id", id).first();
-
-    if (!point) {
-      return res.status(400).json({ message: "Point not found." });
-    }
-
-    //listar todos os items que tem relaçao com o ponto de coleta
-    const items = await knex("items")
-      .join("point_items", "items.id", "=", "point_items.item_id")
-      .where("point_items.point_id", id);
-
-    return res.json({ point, items });
-  }
-
   async index(req: Request, res: Response) {
     //vou ter o request de cidades, uf, items (query params, pois se usa sempre que a gente vai lidar com filtros/paginação, etc)
     //OBS. o request params é usado na rota. O request body a gente só usa pra criação e edição de algo.
@@ -42,7 +22,15 @@ class PointsController {
       .distinct()
       .select("points.*");
 
-    return res.json(points);
+    const serializedPoints = points.map((point) => {
+      return {
+        ...point,
+        // image_url: `http://localhost:3333/uploads/${point.image}`,
+        image_url: `http://10.0.0.53:3333/uploads/${point.image}`,
+      };
+    });
+
+    return res.json(serializedPoints);
   }
 
   async create(req: Request, res: Response) {
@@ -52,12 +40,11 @@ class PointsController {
     const trx = await knex.transaction();
 
     const point = {
-      image:
-        "https://images.unsplash.com/photo-1488459716781-31db52582fe9?ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&ixlib=rb-1.2.1&auto=format&fit=crop&w=400&q=60",
+      image: req.file?.filename,
       name,
       email,
       whatsapp,
-      latitude, 
+      latitude,
       longitude,
       city,
       uf,
@@ -69,12 +56,15 @@ class PointsController {
     const point_id = insertedIds[0];
 
     //para fazer o relacionamento com a tabela de items
-    const pointItems = items.map((item_id: number) => {
-      return {
-        item_id,
-        point_id,
-      };
-    });
+    const pointItems = items
+      .split(",")
+      .map((item: string) => Number(item.trim()))
+      .map((item_id: number) => {
+        return {
+          item_id,
+          point_id,
+        };
+      });
     await trx("point_items").insert(pointItems);
 
     await trx.commit();
@@ -83,6 +73,32 @@ class PointsController {
       id: point_id,
       ...point,
     });
+  }
+
+  async show(req: Request, res: Response) {
+    //pegar id do ponto de coleta
+    // const id = req.params.id;
+    const { id } = req.params;
+
+    //o first > retorna apenas 1 unico registro
+    const point = await knex("points").where("id", id).first();
+
+    if (!point) {
+      return res.status(400).json({ message: "Point not found." });
+    }
+
+    const serializedPoint = {
+      ...point,
+      // image_url: `http://localhost:3333/uploads/${point.image}`,
+      image_url: `http://10.0.0.53:3333/uploads/${point.image}`,
+    };
+
+    //listar todos os items que tem relaçao com o ponto de coleta
+    const items = await knex("items")
+      .join("point_items", "items.id", "=", "point_items.item_id")
+      .where("point_items.point_id", id);
+
+    return res.json({ point: serializedPoint, items });
   }
 }
 
